@@ -25,6 +25,7 @@ public final class BubonicCore extends JavaPlugin implements Listener {
     @Override
     public void onEnable()
     {
+        random = new Random();
         dataFile = new File(getDataFolder(), "infected_players.txt");
         if (!dataFile.exists()) {
             try {
@@ -63,7 +64,7 @@ public final class BubonicCore extends JavaPlugin implements Listener {
         }
     }
 
-    @EventHandler public void onCreatureSPawn(CreatureSpawnEvent e)
+    @EventHandler public void onCreatureSPawn(EntitySpawnEvent e)
     {
         Entity entity = e.getEntity();
         if (entity instanceof Zombie)
@@ -72,14 +73,13 @@ public final class BubonicCore extends JavaPlugin implements Listener {
             if (shouldBeInfectingZombie())
             {
                 zombie.setCustomName("Infecting Zombie");
-                zombie.setCustomNameVisible(true);
             }
         }
     }
 
     private boolean shouldBeInfectingZombie()
     {
-        return random.nextDouble() < 0.5;
+        return random.nextDouble() < 0.01;
     }
 
     private boolean isInfectingZombie(Zombie zombie)
