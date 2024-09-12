@@ -1,0 +1,4 @@
+name: BubonicCore
+version: '${project.version}'
+main: me.sialim.buboniccore.BubonicCore
+api-version: '1.21'
