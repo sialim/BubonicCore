@@ -2,3 +2,10 @@ name: BubonicCore
 version: '${project.version}'
 main: me.sialim.buboniccore.BubonicCore
 api-version: '1.21'
+commands:
+  cure:
+    usage: /cure
+    permission: bubonic.cure
+  infect:
+    usage: /infect
+    permission: bubonic.infect
