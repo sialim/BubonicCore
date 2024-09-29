@@ -4,7 +4,9 @@ import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.CreatureSpawner;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Levelled;
+import org.bukkit.block.data.type.Campfire;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -14,6 +16,8 @@ import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.CauldronLevelChangeEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntitySpawnEvent;
@@ -265,7 +269,6 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
             for (Entity entity : nearbyEntities) {
                 if (entity instanceof TextDisplay) {
                     entity.remove();
-                    getLogger().info("Hologram removed because cauldron was broken.");
                 }
             }
         }
@@ -274,7 +277,6 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
     @EventHandler public void onItemDrop(PlayerDropItemEvent e) {
         Item droppedItem = e.getItemDrop();
 
-        getLogger().info("Item " + droppedItem.getName() + " dropped by player: " + e.getPlayer().getName());
         if(!isIngredient(droppedItem.getItemStack().getType())) return;
 
         new BukkitRunnable() {
@@ -289,39 +291,30 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
                     int roundedItemY = (int) Math.floor(itemLocation.getY());
                     int roundedItemZ = (int) Math.floor(itemLocation.getZ());
 
-                    getLogger().info("Dropped item adjusted location: " + roundedItemX + ", " + roundedItemY + ", " + roundedItemZ);
 
                     Block block = itemLocation.getWorld().getBlockAt(roundedItemX, roundedItemY, roundedItemZ);
 
                     if (block.getType() == Material.WATER_CAULDRON) {
-                        getLogger().info("Cauldron found at: " + block.getLocation());
 
                         if (isCauldronFilled(block) && hasLitCampfireBelow(block)) {
                             Material flowerType = droppedItem.getItemStack().getType();
                             if (isIngredient(flowerType)) {
-                                getLogger().info("Valid ingredient dropped: " + flowerType.name());
 
-                                if (!isHologramAboveCauldron(block.getLocation())) {
+                                if (!isHologramAboveCauldron(block.getLocation()))
                                     summonHologram(block.getLocation(), flowerType);
-                                    startBrewingProcess(block.getLocation(), flowerType);
-                                    getLogger().info("Hologram summoned above cauldron.");
-                                    droppedItem.remove();
-                                    cancel();
-                                } else {
-                                    getLogger().info("There is already a hologram above this cauldron.");
-                                }
+                                if (isCauldronBrewing(block)) return;
+                                startBrewingProcess(block.getLocation(), flowerType);
+                                addIngredient(block, droppedItem);
+                                cancel();
                             }
                         } else {
-                            getLogger().info("Cauldron not filled or no lit campfire below.");
                         }
                     }
 
                     if (++ticks >= 40) {
-                        getLogger().info("Task cancelled after 40 ticks.");
                         cancel();
                     }
                 } else {
-                    getLogger().info("Dropped item is no longer valid.");
                     cancel();
                 }
             }
@@ -366,18 +359,22 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
         TextDisplay hologram = (TextDisplay) location.getWorld().spawn(location.add(0.5, 1.5, 0.5), TextDisplay.class);
         hologram.setText("Previous Ingredient: " + flowerType.name() + "\nBrewing: 5:00");
         hologram.setPersistent(true);
-        hologram.setViewRange(0.035f);
+        hologram.setViewRange(0.072f);
         hologram.setBillboard(Display.Billboard.VERTICAL);
         hologram.getPersistentDataContainer().set(new NamespacedKey(this, "ingredients"), PersistentDataType.STRING, "");
     }
 
     public void addIngredient(Block cauldronBlock, Item item) {
+        item.remove();
         TextDisplay hologram = getHologramAboveCauldron(cauldronBlock.getLocation());
         if (hologram == null) return;
 
-        if (isCauldronBrewing(cauldronBlock)) {
+        if (isCauldronBrewing(cauldronBlock)) return;
 
-        }
+        String currentIngredients = hologram.getPersistentDataContainer().get(new NamespacedKey(this, "ingredients"), PersistentDataType.STRING);
+        if (currentIngredients == null) currentIngredients = "";
+
+        String newIngredientId = String.valueOf(item.getItemStack().getType().getId());
     }
 
     private boolean isCauldronBrewing(Block cauldronBlock) {
@@ -401,6 +398,7 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
                     return;
                 }
 
+                spawnBubblingParticles(cauldronLoc);
                 hologram.setText("Previous Ingredient: " + flowerType.name() + "\nBrewing: " + formatTime(timeLeft));
 
                 timeLeft--;
@@ -413,8 +411,45 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
     }
 
     private void completeBrewingProcess(Location cauldronLocation, TextDisplay hologram, Material flowerType) {
+        Block cauldronBlock = cauldronLocation.getBlock();
+        if (cauldronBlock.getType() == Material.WATER_CAULDRON) {
+            Levelled levelled = (Levelled) cauldronBlock.getBlockData();
+            int currentLevel = levelled.getLevel();
+            if (currentLevel > 0) {
+                levelled.setLevel(currentLevel - 1);
+                cauldronBlock.setBlockData(levelled);
+            }
+        }
+
+        Block belowBlock = cauldronBlock.getRelative(BlockFace.DOWN);
+        if (belowBlock.getType() == Material.CAMPFIRE); {
+            BlockData blockData = belowBlock.getBlockData();
+            if (blockData instanceof Campfire campfireData) {
+                campfireData.setLit(false);
+            }
+            belowBlock.setBlockData(blockData);
+        }
+
         hologram.getPersistentDataContainer().remove(new NamespacedKey(this, "isBrewing"));
         hologram.setText("Previous Ingredient: " + flowerType.name() + "\nBrewing Complete!");
+    }
+
+    @EventHandler public void onCampfireExtinguish(BlockPhysicsEvent e) {
+        if (e.getBlock().getType() == Material.CAMPFIRE) {
+            Block aboveBlock = e.getBlock().getRelative(BlockFace.UP);
+            if (aboveBlock.getType() == Material.WATER_CAULDRON) {
+                stopBrewingProcess(aboveBlock.getLocation());
+            }
+        }
+    }
+
+    @EventHandler public void onCauldronLevelChange(CauldronLevelChangeEvent e) {
+        if (e.getBlock().getType() == Material.WATER_CAULDRON) {
+            if (isCauldronFilled(e.getBlock())) {
+                return;
+            }
+            stopBrewingProcess(e.getBlock().getLocation());
+        }
     }
 
     private String formatTime(int seconds) {
@@ -429,6 +464,14 @@ public final class BubonicCore extends JavaPlugin implements Listener, CommandEx
             Location particleLocation = cauldronLoc.clone().add(0.5, 0.7, 0.5);
 
             world.spawnParticle(Particle.BUBBLE_COLUMN_UP, particleLocation, 10, 0.3, 0.2, 0.3, 0.05);
+        }
+    }
+
+    private void stopBrewingProcess(Location cauldronLocation) {
+        TextDisplay hologram = getHologramAboveCauldron(cauldronLocation);
+        if (hologram != null) {
+            hologram.getPersistentDataContainer().remove(new NamespacedKey(this, "isBrewing"));
+            hologram.remove();
         }
     }
 }
