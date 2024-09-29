@@ -2,6 +2,7 @@ name: BubonicCore
 version: '${project.version}'
 main: me.sialim.buboniccore.BubonicCore
 api-version: '1.21'
+depend: [Calendar, PlaceholderAPI]
 commands:
   cure:
     usage: /cure
